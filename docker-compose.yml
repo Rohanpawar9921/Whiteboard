@@ -52,7 +52,6 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: whiteboard
       KEYCLOAK_CLIENT_ID: whiteboard-backend
-      KEYCLOAK_CLIENT_SECRET: your-client-secret
       ML_SERVER_URL: http://ml-server:8000
       CORS_ORIGIN: http://localhost:3000
     ports:

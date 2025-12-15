@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import uploadRoutes from './upload';
 import predictRoutes from './predict';
+import authRoutes from './auth';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.get('/health', (_req, res) => {
 });
 
 // API routes
+router.use('/auth', authRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/predict', predictRoutes);
 

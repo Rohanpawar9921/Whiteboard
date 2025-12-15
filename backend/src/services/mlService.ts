@@ -1,4 +1,5 @@
 import axios from 'axios';
+import FormData from 'form-data';
 import config from '../config';
 import { PredictionResponse } from '../types';
 
@@ -7,6 +8,48 @@ class MLService {
 
   constructor() {
     this.baseUrl = config.mlServerUrl;
+  }
+
+  /**
+   * Send image buffer to ML server for prediction
+   * @param buffer - Image file buffer
+   * @param mimetype - MIME type of the image
+   * @param filename - Original filename
+   * @returns Prediction results
+   */
+  async predictImageFromBuffer(
+    buffer: Buffer,
+    mimetype: string,
+    filename: string
+  ): Promise<PredictionResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('file', buffer, {
+        filename,
+        contentType: mimetype,
+      });
+
+      const response = await axios.post<PredictionResponse>(
+        `${this.baseUrl}/predict`,
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+          },
+          timeout: 30000, // 30 second timeout
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error('ML Service prediction error:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(`ML Server error: ${error.response.data.detail || error.message}`);
+      }
+      throw new Error('Failed to get prediction from ML server');
+    }
   }
 
   /**
@@ -27,6 +70,9 @@ class MLService {
       return response.data;
     } catch (error) {
       console.error('ML Service prediction error:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        throw new Error(`ML Server error: ${error.response.data.detail || error.message}`);
+      }
       throw new Error('Failed to get prediction from ML server');
     }
   }

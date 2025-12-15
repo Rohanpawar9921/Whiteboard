@@ -3,6 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
+import numpy as np
+from PIL import Image
+import io
+import tensorflow as tf
+from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input, decode_predictions
+import requests
 
 app = FastAPI(
     title="Whiteboard ML Server",
@@ -32,6 +38,70 @@ class PredictionResponse(BaseModel):
 class ImageURLRequest(BaseModel):
     imageUrl: str
 
+# Global model variable
+model = None
+
+def load_model():
+    """Load the MobileNetV2 model pre-trained on ImageNet"""
+    global model
+    if model is None:
+        print("Loading MobileNetV2 model...")
+        model = MobileNetV2(weights='imagenet', include_top=True)
+        print("Model loaded successfully!")
+    return model
+
+def preprocess_image(image: Image.Image) -> np.ndarray:
+    """Preprocess image for MobileNetV2"""
+    # Convert to RGB if necessary
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Resize to 224x224 (MobileNetV2 input size)
+    image = image.resize((224, 224))
+    
+    # Convert to numpy array
+    img_array = np.array(image)
+    
+    # Add batch dimension
+    img_array = np.expand_dims(img_array, axis=0)
+    
+    # Preprocess for MobileNetV2
+    img_array = preprocess_input(img_array)
+    
+    return img_array
+
+def predict_image_with_model(image: Image.Image) -> PredictionResponse:
+    """Run prediction on the image"""
+    model = load_model()
+    
+    # Preprocess image
+    processed_image = preprocess_image(image)
+    
+    # Make prediction
+    predictions = model.predict(processed_image)
+    
+    # Decode predictions (top 5)
+    decoded = decode_predictions(predictions, top=5)[0]
+    
+    # Convert to response format
+    prediction_items = [
+        PredictionItem(
+            label=label.replace('_', ' ').title(),
+            score=float(score)
+        )
+        for (_, label, score) in decoded
+    ]
+    
+    # Top prediction
+    top_prediction = prediction_items[0]
+    
+    return PredictionResponse(
+        label=top_prediction.label,
+        confidence=top_prediction.score,
+        predictions=prediction_items
+    )
+
+
 @app.get("/")
 async def root():
     """Root endpoint with API information"""
@@ -50,7 +120,7 @@ async def health_check():
     return {
         "status": "OK",
         "service": "ml-server",
-        "model_loaded": False  # TODO: Update when model is loaded
+        "model_loaded": model is not None
     }
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -66,6 +136,8 @@ async def predict_image(file: Optional[UploadFile] = File(None), data: Optional[
     TODO: Implement actual ML model prediction
     """
     try:
+        image = None
+        
         # Check if we received file or URL
         if file:
             # Validate file type
@@ -75,32 +147,31 @@ async def predict_image(file: Optional[UploadFile] = File(None), data: Optional[
                     detail="Invalid file type. Only JPEG, PNG, and WebP are allowed."
                 )
             
-            # TODO: Process uploaded file with ML model
-            filename = file.filename
-            print(f"Received file: {filename}")
+            # Read file and convert to PIL Image
+            contents = await file.read()
+            image = Image.open(io.BytesIO(contents))
+            print(f"Received file: {file.filename}")
             
         elif data and data.imageUrl:
-            # TODO: Download and process image from URL
+            # Download image from URL
             print(f"Received image URL: {data.imageUrl}")
+            response = requests.get(data.imageUrl, timeout=10)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Failed to download image from URL"
+                )
+            image = Image.open(io.BytesIO(response.content))
         else:
             raise HTTPException(
                 status_code=400,
                 detail="Either file upload or imageUrl is required"
             )
         
-        # Dummy prediction response
-        # TODO: Replace with actual ML model inference
-        dummy_response = PredictionResponse(
-            label="Cat",
-            confidence=0.95,
-            predictions=[
-                PredictionItem(label="Cat", score=0.95),
-                PredictionItem(label="Dog", score=0.03),
-                PredictionItem(label="Bird", score=0.02)
-            ]
-        )
+        # Run prediction with the model
+        prediction_response = predict_image_with_model(image)
         
-        return dummy_response
+        return prediction_response
         
     except HTTPException:
         raise

@@ -1,37 +1,42 @@
 import { Response } from 'express';
 import { AuthenticatedRequest, PredictionRequest } from '../types';
+import mlService from '../services/mlService';
 
 export const predictImage = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   try {
-    const { imageUrl } = req.body as PredictionRequest;
-
-    if (!imageUrl) {
-      res.status(400).json({ error: 'Image URL is required' });
+    // Check if file was uploaded
+    if (req.file) {
+      // File upload - forward buffer to ML server
+      const prediction = await mlService.predictImageFromBuffer(
+        req.file.buffer,
+        req.file.mimetype,
+        req.file.originalname
+      );
+      res.status(200).json(prediction);
       return;
     }
 
-    // TODO: Implement actual ML prediction logic
-    // For now, return a placeholder response
-    
-    // const prediction = await mlService.predictImage(imageUrl);
-    
-    // Placeholder response
-    const prediction = {
-      label: 'Placeholder',
-      confidence: 0.95,
-      predictions: [
-        { label: 'Cat', score: 0.95 },
-        { label: 'Dog', score: 0.03 },
-        { label: 'Bird', score: 0.02 },
-      ],
-    };
+    // Otherwise, check for imageUrl in body
+    // Only destructure if req.body exists and is not empty
+    if (req.body && typeof req.body === 'object') {
+      const { imageUrl } = req.body as PredictionRequest;
+      
+      if (imageUrl) {
+        // URL-based prediction
+        const prediction = await mlService.predictImage(imageUrl);
+        res.status(200).json(prediction);
+        return;
+      }
+    }
 
-    res.status(200).json(prediction);
+    // Neither file nor imageUrl provided
+    res.status(400).json({ error: 'Either image file or imageUrl is required' });
   } catch (error) {
     console.error('Prediction error:', error);
-    res.status(500).json({ error: 'Failed to predict image' });
+    const errorMessage = error instanceof Error ? error.message : 'Failed to predict image';
+    res.status(500).json({ error: errorMessage });
   }
 };

@@ -62,11 +62,15 @@ export const setupSocketHandlers = (io: Server): void => {
 
     // Handle drawing events
     socket.on('drawing', ({ sessionId, data }: { sessionId: string; data: DrawingData }) => {
+      console.log(`Drawing received from ${username} in session ${sessionId}:`, data);
       const session = sessions.get(sessionId);
       if (session) {
         session.drawings.push(data);
         // Broadcast to all users in the session except sender
         socket.to(sessionId).emit('drawing', data);
+        console.log(`Drawing broadcasted to session ${sessionId}`);
+      } else {
+        console.log(`Session ${sessionId} not found!`);
       }
     });
 
